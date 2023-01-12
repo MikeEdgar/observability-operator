@@ -98,9 +98,10 @@ func main() {
 	}
 
 	observabilityReconciler := &controllers.ObservabilityReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Observability"),
-		Scheme: mgr.GetScheme(),
+		Client:         mgr.GetClient(),
+		WatchNamespace: getWatchNamespace(),
+		Log:            ctrl.Log.WithName("controllers").WithName("Observability"),
+		Scheme:         mgr.GetScheme(),
 	}
 
 	if err = observabilityReconciler.SetupWithManager(mgr); err != nil {
@@ -137,4 +138,15 @@ func injectStopHandler(mgr ctrl.Manager, o *apiv1.Observability, setupLog logr.L
 	}()
 	err := mgr.Start(ctrl.SetupSignalHandler())
 	return err
+}
+
+func getWatchNamespace() string {
+	ns, found := os.LookupEnv("WATCH_NAMESPACE")
+
+	if !found {
+		setupLog.Info("WATCH_NAMESPACE not configured; Observabilities in all namespaces will be reconciled")
+		return ""
+	}
+
+	return ns
 }

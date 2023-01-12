@@ -25,6 +25,7 @@ import (
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -260,8 +261,30 @@ func (r *Reconciler) Reconcile(ctx context.Context, cr *v1.Observability, s *v1.
 	log.Info("operator resync window elapsed",
 		"configured resync period", cr.Spec.ResyncPeriod)
 
+	selector := labels.NewSelector()
+
+	if cr.Spec.ConfigurationSelector.MatchLabels != nil {
+		matchLabels := labels.SelectorFromSet(cr.Spec.ConfigurationSelector.MatchLabels)
+		requirements, _ := matchLabels.Requirements()
+
+		for _, requirement := range requirements {
+			selector = selector.Add(requirement)
+		}
+	}
+
+	if cr.Spec.ConfigurationSelector.MatchExpressions != nil {
+		for _, expr := range cr.Spec.ConfigurationSelector.MatchExpressions {
+			requirement, err := labels.NewRequirement(expr.Key, selection.Operator(expr.Operator), expr.Values)
+			if err != nil {
+				metrics.IncreaseFailedConfigurationSyncsMetric()
+				return v1.ResultFailed, err
+			}
+			selector = selector.Add(*requirement)
+		}
+	}
+
 	opts := &client.ListOptions{
-		LabelSelector: labels.SelectorFromSet(cr.Spec.ConfigurationSelector.MatchLabels),
+		LabelSelector: selector,
 	}
 
 	// Get all configuration secret sets as well

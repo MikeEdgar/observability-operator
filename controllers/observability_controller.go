@@ -51,6 +51,7 @@ const (
 // ObservabilityReconciler reconciles a Observability object
 type ObservabilityReconciler struct {
 	client.Client
+	WatchNamespace  string
 	Log             logr.Logger
 	Scheme          *runtime.Scheme
 	installComplete bool
@@ -78,6 +79,11 @@ type ObservabilityReconciler struct {
 
 func (r *ObservabilityReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("observability", req.NamespacedName)
+
+	if r.WatchNamespace != "" && r.WatchNamespace != req.Namespace {
+		log.Info(fmt.Sprintf("Skipping Observability CR in unwatched namespace %v (watching namespace %v)", req.Namespace, r.WatchNamespace))
+		return ctrl.Result{}, nil
+	}
 
 	// fetch Observability instance
 	obs := &apiv1.Observability{}
@@ -253,6 +259,11 @@ func (r *ObservabilityReconciler) InitializeOperand(mgr ctrl.Manager) error {
 
 	found := false
 	for _, existing := range instances.Items {
+		if existing.Namespace != namespace {
+			r.Log.Info("Ignoring pre-existing operand in unwatched namespace", "namespace", existing.Namespace)
+			continue
+		}
+
 		if existing.Labels["managed-by"] != "observability-operator" {
 			r.Log.Info("removing pre-existing operand missing or mismatching managed label")
 			if err := r.UpdateOperand(&existing, &instance); err != nil {
